@@ -10,6 +10,8 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import traceback
 import logging
+import requests
+import google.auth.transport.requests
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -260,6 +262,65 @@ def save_email_endpoint_mapping(email, endpoint):
         print(f"Error saving email-endpoint mapping: {str(e)}")
         return False
 
+def send_message_to_owner(owner_endpoint, user_name, user_photo, license_plate):
+    """Send a message to the owner using Google Chat API."""
+    try:
+        print(f"Sending message to owner at endpoint: {owner_endpoint}")
+        
+        # Get access token for Google Chat API
+        credentials = service_account.Credentials.from_service_account_file(
+            'service-account.json',
+            scopes=['https://www.googleapis.com/auth/chat.bot']
+        )
+        
+        # Get the access token using a simple request
+        auth_req = google.auth.transport.requests.Request()
+        credentials.refresh(auth_req)
+        token = credentials.token
+        
+        # Construct the message URL
+        url = f"https://chat.googleapis.com/v1/{owner_endpoint}/messages"
+        
+        # Construct the message payload
+        payload = {
+            "cardsV2": [{
+                "card": {
+                    "header": {
+                        "title": user_name,
+                        "imageUrl": user_photo
+                    },
+                    "sections": [{
+                        "widgets": [{
+                            "textParagraph": {
+                                "text": f"{user_name} is requesting you to kindly move your vehicle ({license_plate})."
+                            }
+                        }]
+                    }]
+                }
+            }]
+        }
+        
+        # Send the message
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            print("Message sent successfully to owner")
+            return True
+        else:
+            print(f"Failed to send message to owner. Status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error sending message to owner: {str(e)}")
+        print(f"Error details: {traceback.format_exc()}")
+        return False
+
 @functions_framework.http
 def gocar_bot(request):
     """Main entry point for the Google Chat bot."""
@@ -309,6 +370,7 @@ def on_message(request):
         user_message = request_json.get('message', {}).get('text', '').strip()
         user_email = request_json.get('user', {}).get('email')
         user_endpoint = request_json.get('space', {}).get('name')
+        user_name = request_json.get('user', {}).get('displayName', 'Unknown User')
         
         # Validate input
         if not user_message or not user_email or not user_endpoint:
@@ -378,13 +440,14 @@ def on_message(request):
         print(f"Owner endpoint: {owner_endpoint}")
         print(f"User photo: {user_photo}")
         print(f"Owner photo: {owner_photo}")
-
         
         if owner_endpoint:
-            # Send message back to user and provide him with the owner's details
-            # Implementation for sending message to user
+            # Send message to owner
+            message_sent = send_message_to_owner(owner_endpoint, user_name, user_photo, license_plate)
+            
+            # Send response back to user
             return jsonify({
-                "text": "Owner details found and message sent.",
+                "text": "Owner details found and message sent." if message_sent else "Owner details found but message could not be sent.",
                 "cards": [{
                     "sections": [{
                         "widgets": [
