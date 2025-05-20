@@ -19,52 +19,105 @@ logger = logging.getLogger(__name__)
 SHEET1_NAME = "Sheet1"
 SHEET2_NAME = "Sheet2"
 SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '1LPZfvogYD4_DG_6zNiEFVDhpsUSUrfQ1y0bSzf7GjNw')
+DELEGATED_USER = 'ITassist@gosaas.io'
+SHEETS_SCOPE = ['https://www.googleapis.com/auth/spreadsheets']
+DIRECTORY_SCOPE = ['https://www.googleapis.com/auth/admin.directory.user.readonly']
 
 # Sarcastic remarks list
 SARCASTIC_REMARKS = [
-        "Come on, you're better than this.",
-        "Stop WASTING MY TIME.",
-        "Are you alright? Do you need water? Do you feel dizzy?",
-        "Nice try, but I've seen it all.",
-        "I'm impressed, you've mastered the fine art of messing with me.",
-        "Did you think I wouldn't notice?",
-        "Oh, you again? I was hoping for a change of scenery.",
-        "Is this your car's way of trying to chat?",
-        "You know that I know, right?",
-        "Impressive attempt, but I'm not fooled.",
-        "Nice try, but I've got better things to do.",
-        "You must be bored. Let's spice things up a bit.",
-        "Are we doing this again? Really?",
-        "Well, well, well. Guess who's back?",
-        "If only this was as exciting as a cat video.",
-        "Is this a car or a portal to your alternate reality?",
-        "Trying to slip under the radar, huh?",
-        "I appreciate the effort, but I'm not biting.",
-        "You can't pull one over on me twice!",
-        "Ah, the old switcheroo. Classic move!",
-        "Playing mind games, huh? Game on!",
-        "I'll give you an A for effort, but a C for execution.",
-        "Trying to get out of chores, I see.",
-        "Back again with more license plate fun?",
-        "Oh, I see. You're testing my patience now.",
-        "Do you ever get tired of this?",
-        "Is this car tag or a never-ending game of hide and seek?",
-        "You've got guts, I'll give you that.",
-        "Are you trying to pass a test or just fooling around?",
-        "Nice try, but I'm too clever for that.",
-        "This is starting to feel like deja vu.",
-        "I thought we already did this last week.",
-        "Oh, now we're getting into the tricky stuff.",
-        "Are we trying to break the record for license plate messages?",
-        "You know I have a long memory, right?"
-      ]
+    "Come on, you're better than this.",
+    "Stop WASTING MY TIME.",
+    "Are you alright? Do you need water? Do you feel dizzy?",
+    "Nice try, but I've seen it all.",
+    "I'm impressed, you've mastered the fine art of messing with me.",
+    "Did you think I wouldn't notice?",
+    "Oh, you again? I was hoping for a change of scenery.",
+    "Is this your car's way of trying to chat?",
+    "You know that I know, right?",
+    "Impressive attempt, but I'm not fooled.",
+    "Nice try, but I've got better things to do.",
+    "You must be bored. Let's spice things up a bit.",
+    "Are we doing this again? Really?",
+    "Well, well, well. Guess who's back?",
+    "If only this was as exciting as a cat video.",
+    "Is this a car or a portal to your alternate reality?",
+    "Trying to slip under the radar, huh?",
+    "I appreciate the effort, but I'm not biting.",
+    "You can't pull one over on me twice!",
+    "Ah, the old switcheroo. Classic move!",
+    "Playing mind games, huh? Game on!",
+    "I'll give you an A for effort, but a C for execution.",
+    "Trying to get out of chores, I see.",
+    "Back again with more license plate fun?",
+    "Oh, I see. You're testing my patience now.",
+    "Do you ever get tired of this?",
+    "Is this car tag or a never-ending game of hide and seek?",
+    "You've got guts, I'll give you that.",
+    "Are you trying to pass a test or just fooling around?",
+    "Nice try, but I'm too clever for that.",
+    "This is starting to feel like deja vu.",
+    "I thought we already did this last week.",
+    "Oh, now we're getting into the tricky stuff.",
+    "Are we trying to break the record for license plate messages?",
+    "You know I have a long memory, right?"
+]
+
+def get_directory_service():
+    """Initialize and return a Google Directory API service with domain-wide delegation."""
+    try:
+        print(f"Initializing Directory API service with delegated user: {DELEGATED_USER}")
+        credentials = service_account.Credentials.from_service_account_file(
+            'service-account.json',
+            scopes=DIRECTORY_SCOPE
+        ).with_subject(DELEGATED_USER)
+        
+        service = build('admin', 'directory_v1', credentials=credentials)
+        print("Directory API service initialized successfully")
+        return service
+    except Exception as e:
+        print(f"Error creating directory service: {str(e)}")
+        print(f"Error details: {traceback.format_exc()}")
+        logger.error(f"Error creating directory service: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
+def get_profile_photo(email):
+    """Fetch profile photo for a given email using Directory API."""
+    try:
+        print(f"Attempting to fetch profile photo for email: {email}")
+        service = get_directory_service()
+        
+        # Fetch user details from Directory API
+        print(f"Making API call to get user details for: {email}")
+        result = service.users().get(
+            userKey=email,
+            projection='full'
+        ).execute()
+        
+        print(f"API response received for {email}")
+        print(f"Response keys: {result.keys()}")
+        
+        # Return the photo URL if available
+        photo_url = result.get('thumbnailPhotoUrl')
+        if photo_url:
+            print(f"Found photo URL for {email}: {photo_url}")
+            return photo_url
+        else:
+            print(f"No photo URL found for {email}")
+            return None
+    except Exception as e:
+        print(f"Error fetching profile photo for {email}: {str(e)}")
+        print(f"Error details: {traceback.format_exc()}")
+        logger.error(f"Error fetching profile photo: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None
 
 def get_sheets_service():
     """Initialize and return a Google Sheets API service."""
     try:
         credentials = service_account.Credentials.from_service_account_file(
             'service-account.json',
-            scopes=['https://www.googleapis.com/auth/spreadsheets']
+            scopes=SHEETS_SCOPE
         )
         return build('sheets', 'v4', credentials=credentials)
     except Exception as e:
@@ -285,21 +338,18 @@ def on_message(request):
                 "text": "License plate not found in the records."
             })
             
+        # Get profile photos
+        user_photo = get_profile_photo(user_email)
+        owner_photo = get_profile_photo(owner_details['email'])
+        
+        print(f"User photo URL: {user_photo}")
+        print(f"Owner photo URL: {owner_photo}")
+            
         # Check if sender is the owner
         if user_email == owner_details['email']:
             random_remark = random.choice(SARCASTIC_REMARKS)
             return jsonify({
-                "text": f"You are the owner of the vehicle: ({license_plate}).\n{random_remark}"
-            })
-            
-        # Find owner's endpoint
-        owner_endpoint = find_endpoint_by_email(owner_details['email'])
-        
-        if owner_endpoint:
-            # Send message to owner
-            # Implementation for sending message to owner
-            return jsonify({
-                "text": "Owner details found and message sent.",
+                "text": f"You are the owner of the vehicle: ({license_plate}).\n{random_remark}",
                 "cards": [{
                     "sections": [{
                         "widgets": [{
@@ -322,28 +372,77 @@ def on_message(request):
                     }]
                 }]
             })
+            
+        # Find owner's endpoint
+        owner_endpoint = find_endpoint_by_email(owner_details['email'])
+        print(f"Owner endpoint: {owner_endpoint}")
+        print(f"User photo: {user_photo}")
+        print(f"Owner photo: {owner_photo}")
+
+        
+        if owner_endpoint:
+            # Send message back to user and provide him with the owner's details
+            # Implementation for sending message to user
+            return jsonify({
+                "text": "Owner details found and message sent.",
+                "cards": [{
+                    "sections": [{
+                        "widgets": [
+                            {
+                                "keyValue": {
+                                    "topLabel": f"License Plate: {license_plate}",
+                                    "content": f"Owner: {owner_details['name']}",
+                                    "bottomLabel": f"Email: {owner_details['email']}",
+                                    "button": {
+                                        "textButton": {
+                                            "text": owner_details['contact'],
+                                            "onClick": {
+                                                "openLink": {
+                                                    "url": f"tel:{owner_details['contact']}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "image": {
+                                    "imageUrl": owner_photo if owner_photo else None
+                                }
+                            }
+                        ]
+                    }]
+                }]
+            })
         else:
             return jsonify({
                 "text": f"The owner of the license plate ({license_plate}) does not have the chatbot added. Please request them to add the chatbot to their space to enable messaging.",
                 "cards": [{
                     "sections": [{
-                        "widgets": [{
-                            "keyValue": {
-                                "topLabel": f"License Plate: {license_plate}",
-                                "content": f"Owner: {owner_details['name']}",
-                                "bottomLabel": f"Email: {owner_details['email']}",
-                                "button": {
-                                    "textButton": {
-                                        "text": owner_details['contact'],
-                                        "onClick": {
-                                            "openLink": {
-                                                "url": f"tel:{owner_details['contact']}"
+                        "widgets": [
+                            {
+                                "keyValue": {
+                                    "topLabel": f"License Plate: {license_plate}",
+                                    "content": f"Owner: {owner_details['name']}",
+                                    "bottomLabel": f"Email: {owner_details['email']}",
+                                    "button": {
+                                        "textButton": {
+                                            "text": owner_details['contact'],
+                                            "onClick": {
+                                                "openLink": {
+                                                    "url": f"tel:{owner_details['contact']}"
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            {
+                                "image": {
+                                    "imageUrl": owner_photo if owner_photo else None
+                                }
                             }
-                        }]
+                        ]
                     }]
                 }]
             })
