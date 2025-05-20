@@ -12,6 +12,7 @@ import traceback
 import logging
 import requests
 import google.auth.transport.requests
+import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -367,10 +368,20 @@ def on_message(request):
                 "text": "Invalid request type"
             }), 400
             
-        user_message = request_json.get('message', {}).get('text', '').strip()
+        # Get message details
+        message = request_json.get('message', {})
         user_email = request_json.get('user', {}).get('email')
         user_endpoint = request_json.get('space', {}).get('name')
         user_name = request_json.get('user', {}).get('displayName', 'Unknown User')
+        
+        # Validate message type
+        if not isinstance(message.get('text'), str):
+            return jsonify({
+                "text": "Please send only text messages. Images, audio recordings, and links are not supported."
+            })
+            
+        # Get and validate message text
+        user_message = message.get('text', '').strip()
         
         # Validate input
         if not user_message or not user_email or not user_endpoint:
@@ -380,16 +391,24 @@ def on_message(request):
             
         # Check for invalid patterns
         invalid_patterns = [
-            r'https?://',
-            r'\.(jpg|jpeg|png|gif|mp4|avi|mkv)$',
-            r'voice\s*message',
-            r'file\s*attachment'
+            r'https?://',  # URLs
+            r'\.(jpg|jpeg|png|gif|mp4|avi|mkv)$',  # Media files
+            r'voice\s*message',  # Voice messages
+            r'file\s*attachment',  # File attachments
+            r'meet\.google\.com',  # Google Meet links
+            r'drive\.google\.com',  # Google Drive links
+            r'calendar\.google\.com',  # Google Calendar links
+            r'<.*?>',  # HTML tags
+            r'\[.*?\]',  # Markdown links
+            r'@.*? ',  # Mentions
+            r'#.*? ',  # Hashtags
+            r'!.*? '   # Commands
         ]
         
-        if any(pattern in user_message.lower() for pattern in invalid_patterns):
+        if any(re.search(pattern, user_message.lower()) for pattern in invalid_patterns):
             return jsonify({
-                "text": "Invalid input format"
-            }), 400
+                "text": "Please send only the license plate number. Links, media, and special formatting are not supported."
+            })
             
         # Process license plate
         license_plate = user_message.upper()
